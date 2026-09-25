@@ -1,0 +1,30 @@
+name: Analyze PasteNow 2.32
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/analyze-2.32.yml'
+      - 'tools/analyze_2_32.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Analyze official 2.32 build 761
+        run: bash tools/analyze_2_32.sh analysis-out
+
+      - name: Upload textual analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: PasteNow-2.32-761-analysis
+          path: analysis-out
+          if-no-files-found: error
+          retention-days: 14
