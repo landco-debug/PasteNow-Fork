@@ -36,8 +36,8 @@ When multiple image clips are selected in PasteNow and Enter is pressed, only on
   - `collectionView:didSelectItemsAtIndexPaths:`
   - `collectionView:pasteboardWriterForItemAtIndexPath:`
 - `PasteNow.WindowViewModel` contains closure-backed fields named `pasteOrCopyPasteItems`, `hitEnterButton`, `didSelectOrDeselectItem`, and `quickPreviewSelectedItems`.
-- The stock Enter path and the collection-view multi-selection path are separate. The fix therefore intercepts Enter only when the collection view actually has 2+ selected items and routes that event through the controller's existing multi-item paste action.
-- The original vendor application is Hardened Runtime signed, so direct `DYLD_INSERT_LIBRARIES` is blocked. The test fork keeps the vendor executable byte-for-byte as `PasteNow.real`, launches it through a tiny local wrapper, and injects a minimal AppKit runtime patch into the fork copy only.
+- The stock Enter path and the collection-view multi-selection path are separate. The fix intercepts Enter only when the collection view reports 2+ selected items and routes that event through the controller's existing multi-item paste action.
+- The vendor app is Hardened Runtime signed. The fork therefore keeps the downloaded 2.32 executable as `PasteNow.real`, removes only its signature in the fork copy, re-signs it ad-hoc without Hardened Runtime, and starts it through a tiny launcher that injects the patch dylib.
 
 ## Commit hand-off log
 
@@ -50,26 +50,29 @@ When multiple image clips are selected in PasteNow and Enter is pressed, only on
 
 ### Commit 02 — `build: add 2.32 binary analysis workflow`
 - Commit: `02709e319505380bc693bfab0805e0e85f6a8cdf`
-- Added a reproducible macOS CI analysis path for official PasteNow 2.32 build 761.
-- Workflow downloads build 761 directly from the vendor release endpoint and verifies the known SHA-256.
-- Added textual Mach-O, code-signing, entitlement, symbol, Swift-demangle, ObjC metadata and string inventories as a CI artifact.
+- Added reproducible macOS CI analysis for official PasteNow 2.32 build 761.
+- The workflow verifies the known upstream SHA-256 before analysis.
 - No upstream application binary is committed.
-- First CI run succeeded and exposed the relevant classes/actions listed above.
 
 ### Commit 03 — `analysis: add targeted arm64 disassembly`
 - Commit: `eff928ef1a0056f083b4226967398dcfb4ded9dc`
-- Extended the analyzer with Apple-Silicon (`arm64`) instruction-level disassembly.
-- Confirmed the relevant PasteNow controller/action surface on the M1 architecture.
-- Kept analysis reproducible in GitHub Actions.
-- No behavior patch was applied in this commit.
+- Added Apple-Silicon instruction-level analysis.
+- Confirmed the relevant controller/action surface on the M1 architecture.
 
 ### Commit 04 — `fix: route multi-selection Enter through multi-item paste`
-- Adds `patch/PasteNowMultiPasteFix.m`, a very narrow AppKit event patch.
-- Plain Return/keypad Enter is intercepted only when PasteNow's collection view currently reports 2+ selected items.
-- In that case the patch finds `PasteItemViewController` and invokes its existing `onPasteItemsToFrontmostApp:` action, then consumes the original Enter event so the stock single-item path cannot run afterward.
-- Single-selection Enter, modified Return shortcuts, drag-and-drop, and unrelated text/file behavior are left on the stock code path.
-- Adds a tiny launcher plus a CI build workflow that produces an M1 testable `PasteNow-Fork.app` without committing the proprietary upstream bundle.
-- Test: select 2+ image clips, press Enter, verify every selected image reaches the target in one action; then retest one-image Enter and drag-and-drop.
+- Commit: `4c245dff94a9d879edba3d50b082a364aaf93149`
+- Added `patch/PasteNowMultiPasteFix.m`, a narrow AppKit event patch.
+- Plain Return/keypad Enter is intercepted only when PasteNow's collection view has 2+ selected items.
+- The patch invokes `PasteItemViewController.onPasteItemsToFrontmostApp:` and consumes the original Enter event.
+- Single-selection Enter, modified Return shortcuts, and drag-and-drop stay on the stock path.
+- Added CI packaging for an M1-testable fork.
+- First packaging run failed before artifact creation because `PasteNow.real` was intentionally unsigned after Hardened Runtime removal and the final deep-sign step rejected that nested executable.
+
+### Commit 05 — `build: ad-hoc sign renamed PasteNow executable`
+- Fixes the packaging failure from Commit 04.
+- After removing the vendor Hardened Runtime signature from the fork copy, `PasteNow.real` is now immediately ad-hoc signed without `--options runtime`.
+- This keeps DYLD injection available while satisfying the app bundle's nested-code signing verification.
+- Test: CI must complete `codesign --verify --deep --strict`, produce the ZIP artifact, and then the user tests multi-image Enter on the M1 Mac.
 
 ## Current status
-Commit 04 contains the first behavior fix and CI packaging path. The immediate next step is to inspect the GitHub Actions build result and test the produced app on the user's MacBook Air M1 / macOS Sequoia. If the existing multi-item controller action itself proves to have the same defect, the next patch should move one level deeper and construct the selected-item pasteboard payload directly instead of broadening the keyboard interception.
+The behavior patch is implemented. Commit 05 repairs the CI signing/package step. Next step: verify the new workflow run succeeds, download the artifact, and test the exact video scenario on macOS Sequoia.

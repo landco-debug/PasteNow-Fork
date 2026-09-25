@@ -30,9 +30,6 @@ if [[ ! -f "$MACOS/PasteNow" ]]; then
   exit 4
 fi
 
-# Keep the vendor executable byte-for-byte, but execute it through a tiny local
-# launcher so the runtime patch can be injected without permanently rewriting
-# the proprietary Mach-O.
 mv "$MACOS/PasteNow" "$MACOS/PasteNow.real"
 
 clang -O2 -fobjc-arc -dynamiclib   -framework AppKit -framework Foundation   -Wl,-install_name,@rpath/PasteNowMultiPasteFix.dylib   patch/PasteNowMultiPasteFix.m   -o "$FRAMEWORKS/PasteNowMultiPasteFix.dylib"
@@ -40,17 +37,16 @@ clang -O2 -fobjc-arc -dynamiclib   -framework AppKit -framework Foundation   -Wl
 clang -O2 patch/launcher.c -o "$MACOS/PasteNow"
 chmod 755 "$MACOS/PasteNow" "$MACOS/PasteNow.real"
 
-# The vendor executable carries Hardened Runtime, which intentionally strips
-# DYLD injection. Remove only that executable signature in the fork copy.
-# The original downloaded application is never modified or committed.
+# Re-sign the renamed vendor executable ad-hoc WITHOUT Hardened Runtime.
+# This is required because Hardened Runtime strips DYLD_INSERT_LIBRARIES.
 codesign --remove-signature "$MACOS/PasteNow.real" || true
+codesign --force --sign - "$MACOS/PasteNow.real"
 
-# Sign the fork locally/ad-hoc so macOS has internally consistent code objects.
+# Sign the injected library, launcher, and then the containing app bundle.
 codesign --force --sign - "$FRAMEWORKS/PasteNowMultiPasteFix.dylib"
 codesign --force --sign - "$MACOS/PasteNow"
 codesign --force --deep --sign - "$APP"
 
-# CI sanity checks: exact base version, expected injected library, M1-compatible code.
 PLIST="$APP/Contents/Info.plist"
 VERSION="$(defaults read "$PLIST" CFBundleShortVersionString 2>/dev/null || /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
 BUILD="$(defaults read "$PLIST" CFBundleVersion 2>/dev/null || /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
