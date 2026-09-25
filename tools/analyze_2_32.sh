@@ -57,6 +57,32 @@ fi
 
 /usr/bin/strings -a "$BIN" > "$OUT/strings.txt" 2>&1 || true
 
+# Apple-Silicon instruction-level view. This is the target architecture for the user's M1 Mac.
+if /usr/bin/lipo "$BIN" -verify_arch arm64 >/dev/null 2>&1; then
+  /usr/bin/otool -arch arm64 -tvV "$BIN" > "$OUT/disasm-arm64.txt" 2>&1 || true
+  python3 - "$OUT/disasm-arm64.txt" "$OUT/disasm-arm64-focused.txt" <<'PY'
+import re, sys
+src, dst = sys.argv[1:3]
+ranges = [
+    (0x100057000, 0x10007b800, "PasteItemViewController"),
+    (0x1000abe00, 0x1000ad800, "WindowViewModel"),
+]
+addr_re = re.compile(r'^([0-9a-fA-F]{16})\\s')
+lines = open(src, errors='ignore').read().splitlines()
+with open(dst, 'w') as f:
+    for lo, hi, label in ranges:
+        f.write(f"===== {label} 0x{lo:x}-0x{hi:x} =====\\n")
+        active = False
+        for line in lines:
+            m = addr_re.match(line)
+            if m:
+                a = int(m.group(1), 16)
+                active = lo <= a < hi
+            if active:
+                f.write(line + "\\n")
+PY
+fi
+
 PATTERN='paste|pasting|clipboard|selected|selection|select|return|enter|keyDown|keyEquivalent|drag|drop|pasteboard|NSPasteboard|performKeyEquivalent|insert|copy'
 grep -Eai "$PATTERN" "$OUT/strings.txt" > "$OUT/strings-targeted.txt" || true
 grep -Eai "$PATTERN" "$OUT/nm-demangled.txt" > "$OUT/symbols-targeted.txt" || true

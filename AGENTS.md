@@ -25,6 +25,19 @@ When multiple image clips are selected in PasteNow and Enter is pressed, only on
 6. Drag-and-drop behavior is unchanged.
 7. Text/file clip behavior is not regressed.
 
+## Reverse-engineering findings
+- Official baseline verified: PasteNow 2.32 build 761, SHA-256 `f894ef1fce545beaeb1fbd9446cd391f5636c2d9a963eeb55a59c60f33cd10f0`.
+- The relevant UI controller is Swift class `PasteNow.PasteItemViewController`.
+- It exposes concrete ObjC-callable actions including:
+  - `onPasteItemsToFrontmostApp:`
+  - `onPasteItemsToFrontmostAppAsOriginal:`
+  - `onPasteItemsToFrontmostAppAsPlainText:`
+  - `paste:`
+  - `collectionView:didSelectItemsAtIndexPaths:`
+  - `collectionView:pasteboardWriterForItemAtIndexPath:`
+- `PasteNow.WindowViewModel` contains closure-backed fields named `pasteOrCopyPasteItems`, `hitEnterButton`, `didSelectOrDeselectItem`, and `quickPreviewSelectedItems`.
+- This strongly narrows the bug to the Enter action path choosing a single/current item while the collection view already maintains a multi-selection.
+
 ## Commit hand-off log
 
 ### Commit 01 — `chore: initialize PasteNow-Fork handoff log`
@@ -35,12 +48,18 @@ When multiple image clips are selected in PasteNow and Enter is pressed, only on
 - No application code changed.
 
 ### Commit 02 — `build: add 2.32 binary analysis workflow`
-- Adds a reproducible macOS CI analysis path for official PasteNow 2.32 build 761.
-- The workflow downloads build 761 directly from the vendor release endpoint and verifies SHA-256 `f894ef1fce545beaeb1fbd9446cd391f5636c2d9a963eeb55a59c60f33cd10f0`.
-- Adds textual Mach-O, code-signing, entitlement, symbol, Swift-demangle, ObjC metadata and string inventories as a CI artifact.
-- Does not commit the upstream application binary.
-- Purpose: locate the Enter/single-paste path and compare it with the multi-selection drag path before applying a minimal patch.
-- Test/next step: inspect the generated artifact for selection/paste/action method names and call sites.
+- Commit: `02709e319505380bc693bfab0805e0e85f6a8cdf`
+- Added a reproducible macOS CI analysis path for official PasteNow 2.32 build 761.
+- Workflow downloads build 761 directly from the vendor release endpoint and verifies the known SHA-256.
+- Added textual Mach-O, code-signing, entitlement, symbol, Swift-demangle, ObjC metadata and string inventories as a CI artifact.
+- No upstream application binary is committed.
+- First CI run succeeded and exposed the relevant classes/actions listed above.
+
+### Commit 03 — `analysis: add targeted arm64 disassembly`
+- Extends the analyzer with an Apple-Silicon (`arm64`) disassembly.
+- Adds focused address-range extracts for `PasteItemViewController` and `WindowViewModel`.
+- Purpose: map the Enter action and multi-selection paste path precisely enough for a minimal binary/runtime patch instead of guessing.
+- Test/next step: inspect branch/call flow around `paste:`, `onPasteItemsToFrontmostApp:`, selection callbacks, and references to the `hitEnterButton` closure field.
 
 ## Current status
-Binary-analysis workflow is in place. No behavior patch has been applied yet.
+The exact classes and action selectors involved are identified. The next analysis run will provide arm64 instruction-level call flow before the patch is applied.
