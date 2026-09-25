@@ -32,7 +32,11 @@ fi
 
 mv "$MACOS/PasteNow" "$MACOS/PasteNow.real"
 
-clang -O2 -fobjc-arc -dynamiclib   -framework AppKit -framework Foundation   -Wl,-install_name,@rpath/PasteNowMultiPasteFix.dylib   patch/PasteNowMultiPasteFix.m   -o "$FRAMEWORKS/PasteNowMultiPasteFix.dylib"
+clang -O2 -fobjc-arc -dynamiclib \
+  -framework AppKit -framework Foundation -framework CoreServices \
+  -Wl,-install_name,@rpath/PasteNowMultiPasteFix.dylib \
+  patch/PasteNowMultiPasteFix.m \
+  -o "$FRAMEWORKS/PasteNowMultiPasteFix.dylib"
 
 clang -O2 patch/launcher.c -o "$MACOS/PasteNow"
 chmod 755 "$MACOS/PasteNow" "$MACOS/PasteNow.real"
@@ -68,7 +72,7 @@ TEST
 7. Verify one selected image still behaves exactly as before.
 8. Verify drag-and-drop still works.
 
-The fork changes only plain Return/keypad Enter when an NSCollectionView has 2+ selected items.
+The fork leaves PasteNow's normal Enter action intact. For a 2+ selection, it arms a narrow pasteboard hook; only if the first emitted writer is an image does it batch subsequent image writers into one multi-item pasteboard payload. Single-item Enter and non-image multi-selection stay on the stock path.
 EOF
 
 mv "$APP" "$OUT/PasteNow-Fork.app"
