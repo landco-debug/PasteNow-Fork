@@ -11,7 +11,7 @@ PasteNow-Fork — targeted fixes for PasteNow 2.32 (build 761) on macOS Sequoia 
 - Preserve existing PasteNow behavior unless a change is explicitly requested.
 - Primary target machine: MacBook Air M1, macOS Sequoia.
 - Do not touch unrelated repositories.
-- Do not commit or redistribute the upstream PasteNow application binary; CI may download the official build transiently for analysis/building.
+- Do not commit or redistribute the upstream PasteNow application binary; CI may download the official build transiently for analysis/building.\n- Do not ship the old injected-dylib build path: ad-hoc re-signing breaks PasteNow's vendor-bound CloudKit/iCloud identity.
 
 ## User-reported bug
 When multiple image clips are selected in PasteNow and Enter is pressed, only one image is pasted into the active target. Drag-and-drop of the same multi-selection usually transfers all selected images. Desired behavior: Enter should paste the entire current multi-selection, while single-item Enter behavior remains unchanged.
@@ -109,3 +109,21 @@ The previous single-action reroute is superseded. The patch now targets the conf
 
 ## Current status
 A buildable M1 test artifact for the corrected Commit 06 fix is ready. The next hand-off action is user validation of the original video repro; do not redesign the patch unless that test exposes a specific remaining failure.
+
+
+### Commit 08 — `fix: preserve CloudKit identity with external multipaste helper`
+- Real-user validation of the injected build failed before UI testing: PasteNow crashed during startup.
+- Crash report showed `PasteNowMultiPasteFix.dylib` was loaded, then the main thread trapped in CloudKit while CloudSyncKit initialized its `CKContainer`.
+- The forked executable had been ad-hoc signed and no longer carried the vendor Team ID. PasteNow 2.32 depends on restricted iCloud/CloudKit entitlements tied to the vendor signing identity, so copying entitlement strings cannot make the ad-hoc build valid.
+- The in-process injection architecture is therefore retired for shipping. Existing injection source remains only as historical reverse-engineering reference and is no longer built by the main workflow.
+- Added `helper/PasteNowMultiPasteHelper.m`, a standalone companion that leaves the original PasteNow.app untouched.
+- The helper uses a keyboard event tap scoped specifically to PasteNow's PID, not a system-wide key logger.
+- Plain Return/keypad Enter is consumed only when Accessibility reports 2+ selected PasteNow items.
+- For that case the helper sends Command-C to PasteNow, waits for the general pasteboard to change, dismisses the PasteNow panel, returns to the previously active non-PasteNow app, and sends Command-V there.
+- Single-selection Enter stays entirely on PasteNow's stock path.
+- Added a small `PN` menu-bar status item for Accessibility state and quitting.
+- Added `tools/build_helper.sh` and replaced the main packaging workflow so CI now builds only the companion helper.
+- Important validation checkpoint: confirm stock Command-C copies the complete current multi-selection. If PasteNow collapses Command-C to one item, keep the no-resign architecture and change the external transfer mechanism rather than returning to dylib injection.
+
+## Current status after Commit 08
+The startup crash has a confirmed architectural cause: ad-hoc re-signing invalidated PasteNow's CloudKit identity. The safe build now preserves the untouched original PasteNow 2.32 and moves the Enter workaround into a companion helper. Next step is CI compile/package, then user validation on the M1 Mac.

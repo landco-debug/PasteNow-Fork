@@ -1,12 +1,14 @@
-name: Build PasteNow 2.32 MultiPaste Fork
+name: Build PasteNow 2.32 MultiPaste Helper
 
 on:
   push:
     branches: [ main ]
     paths:
       - '.github/workflows/build-patched.yml'
-      - 'patch/**'
-      - 'tools/build_patched_app.sh'
+      - 'helper/**'
+      - 'tools/build_helper.sh'
+      - 'AGENTS.md'
+      - 'README.md'
   workflow_dispatch:
 
 permissions:
@@ -19,16 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build patched 2.32 app
-        run: bash tools/build_patched_app.sh dist
+      - name: Build companion helper
+        run: bash tools/build_helper.sh dist
 
       - name: Upload test build
         uses: actions/upload-artifact@v4
         with:
-          name: PasteNow-Fork-2.32-MultiPaste
+          name: PasteNow-MultiPaste-Helper-0.2
           path: |
-            dist/PasteNow-Fork-2.32-MultiPaste.zip
-            dist/PasteNow-Fork-2.32-MultiPaste.zip.sha256
-            dist/TESTING.txt
+            dist/PasteNow-MultiPaste-Helper-0.2.zip
+            dist/PasteNow-MultiPaste-Helper-0.2.zip.sha256
+            dist/INSTALL-AND-TEST.txt
           if-no-files-found: error
           retention-days: 14
