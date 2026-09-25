@@ -94,3 +94,18 @@ The behavior patch is implemented. Commit 05 repairs the CI signing/package step
 
 ## Current status after Commit 06
 The previous single-action reroute is superseded. The patch now targets the confirmed pasteboard-layer fault while preserving PasteNow 2.32's original multi-selection Enter pipeline.
+
+### Commit 07 — `docs: record successful multipaste build`
+- Records that Commit 06 is `02c589d35c8c05da40aa883b62c2a554c80706b7`.
+- GitHub Actions run `36197414135` completed successfully.
+- CI passed the build and final `codesign --verify --deep --strict` packaging checks.
+- Produced artifact `PasteNow-Fork-2.32-MultiPaste`.
+- The inner distributable ZIP SHA-256 is `fa073b71d1d232dc1fcad4bfa4cd2be3a777ceddc62c9d42d7f51b8a9ead18f2`.
+- Post-download verification confirmed:
+  - `PasteNow.real` is the official universal 2.32 executable (x86_64 + arm64).
+  - The fork launcher is arm64.
+  - `PasteNowMultiPasteFix.dylib` is arm64 and contains the new pasteboard-batching implementation, not the superseded `onPasteItemsToFrontmostApp:` reroute.
+- Remaining validation is the exact user-level macOS Sequoia interaction: select 2+ image clips, press Enter, confirm all selected images are inserted.
+
+## Current status
+A buildable M1 test artifact for the corrected Commit 06 fix is ready. The next hand-off action is user validation of the original video repro; do not redesign the patch unless that test exposes a specific remaining failure.
