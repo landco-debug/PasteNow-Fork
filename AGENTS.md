@@ -36,7 +36,8 @@ When multiple image clips are selected in PasteNow and Enter is pressed, only on
   - `collectionView:didSelectItemsAtIndexPaths:`
   - `collectionView:pasteboardWriterForItemAtIndexPath:`
 - `PasteNow.WindowViewModel` contains closure-backed fields named `pasteOrCopyPasteItems`, `hitEnterButton`, `didSelectOrDeselectItem`, and `quickPreviewSelectedItems`.
-- This strongly narrows the bug to the Enter action path choosing a single/current item while the collection view already maintains a multi-selection.
+- The stock Enter path and the collection-view multi-selection path are separate. The fix therefore intercepts Enter only when the collection view actually has 2+ selected items and routes that event through the controller's existing multi-item paste action.
+- The original vendor application is Hardened Runtime signed, so direct `DYLD_INSERT_LIBRARIES` is blocked. The test fork keeps the vendor executable byte-for-byte as `PasteNow.real`, launches it through a tiny local wrapper, and injects a minimal AppKit runtime patch into the fork copy only.
 
 ## Commit hand-off log
 
@@ -56,10 +57,19 @@ When multiple image clips are selected in PasteNow and Enter is pressed, only on
 - First CI run succeeded and exposed the relevant classes/actions listed above.
 
 ### Commit 03 — `analysis: add targeted arm64 disassembly`
-- Extends the analyzer with an Apple-Silicon (`arm64`) disassembly.
-- Adds focused address-range extracts for `PasteItemViewController` and `WindowViewModel`.
-- Purpose: map the Enter action and multi-selection paste path precisely enough for a minimal binary/runtime patch instead of guessing.
-- Test/next step: inspect branch/call flow around `paste:`, `onPasteItemsToFrontmostApp:`, selection callbacks, and references to the `hitEnterButton` closure field.
+- Commit: `eff928ef1a0056f083b4226967398dcfb4ded9dc`
+- Extended the analyzer with Apple-Silicon (`arm64`) instruction-level disassembly.
+- Confirmed the relevant PasteNow controller/action surface on the M1 architecture.
+- Kept analysis reproducible in GitHub Actions.
+- No behavior patch was applied in this commit.
+
+### Commit 04 — `fix: route multi-selection Enter through multi-item paste`
+- Adds `patch/PasteNowMultiPasteFix.m`, a very narrow AppKit event patch.
+- Plain Return/keypad Enter is intercepted only when PasteNow's collection view currently reports 2+ selected items.
+- In that case the patch finds `PasteItemViewController` and invokes its existing `onPasteItemsToFrontmostApp:` action, then consumes the original Enter event so the stock single-item path cannot run afterward.
+- Single-selection Enter, modified Return shortcuts, drag-and-drop, and unrelated text/file behavior are left on the stock code path.
+- Adds a tiny launcher plus a CI build workflow that produces an M1 testable `PasteNow-Fork.app` without committing the proprietary upstream bundle.
+- Test: select 2+ image clips, press Enter, verify every selected image reaches the target in one action; then retest one-image Enter and drag-and-drop.
 
 ## Current status
-The exact classes and action selectors involved are identified. The next analysis run will provide arm64 instruction-level call flow before the patch is applied.
+Commit 04 contains the first behavior fix and CI packaging path. The immediate next step is to inspect the GitHub Actions build result and test the produced app on the user's MacBook Air M1 / macOS Sequoia. If the existing multi-item controller action itself proves to have the same defect, the next patch should move one level deeper and construct the selected-item pasteboard payload directly instead of broadening the keyboard interception.
